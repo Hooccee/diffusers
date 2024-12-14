@@ -62,7 +62,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
     _import_structure["transformers.transformer_cogview3plus"] = ["CogView3PlusTransformer2DModel"]
-    _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
+    _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel","RfSolverFluxTransformer2DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
@@ -120,6 +120,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogView3PlusTransformer2DModel,
             DiTTransformer2DModel,
             DualTransformer2DModel,
+            RfSolverFluxTransformer2DModel,
             FluxTransformer2DModel,
             HunyuanDiT2DModel,
             LatteTransformer3DModel,

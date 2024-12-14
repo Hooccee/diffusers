@@ -135,6 +135,7 @@ else:
         "FluxImg2ImgPipeline",
         "FluxInpaintPipeline",
         "FluxPipeline",
+        "RfSolverFluxPipeline",
         "FluxFillPipeline",
         "FluxPriorReduxPipeline",
         "ReduxImageEncoder",
@@ -535,6 +536,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxImg2ImgPipeline,
             FluxInpaintPipeline,
             FluxPipeline,
+            RfSolverFluxPipeline,
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
