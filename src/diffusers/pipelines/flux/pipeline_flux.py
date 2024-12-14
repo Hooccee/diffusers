@@ -29,7 +29,7 @@ from transformers import (
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxIPAdapterMixin, FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
-from ...models.transformers import FluxTransformer2DModel
+from ...models.transformers import FluxTransformer2DModel, RfSolverFluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
@@ -515,7 +515,8 @@ class FluxPipeline(
         latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width)[None, :]
 
         latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
-
+        
+        print(latent_image_id_height, latent_image_id_width, latent_image_id_channels)
         latent_image_ids = latent_image_ids.reshape(
             latent_image_id_height * latent_image_id_width, latent_image_id_channels
         )

@@ -131,6 +131,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogView3PlusTransformer2DModel,
             DiTTransformer2DModel,
             DualTransformer2DModel,
+            RfSolverFluxTransformer2DModel,
             FluxTransformer2DModel,
             HunyuanDiT2DModel,
             HunyuanVideoTransformer3DModel,
