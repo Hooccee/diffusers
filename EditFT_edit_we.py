@@ -406,48 +406,48 @@ def interpolated_inversion(
     # 速度补偿前反转timesteps
     timesteps = timesteps[::-1]
 
-    # # 第二阶段：速度补偿
-    # print("Stage II: Velocity Compensation")
-    # with pipeline.progress_bar(total=len(timesteps)-1) as progress_bar:
-    #     for idx in range(len(timesteps)-1):
-    #         t_curr = timesteps[idx]
-    #         t_next = timesteps[idx+1]
-    #         x_t_current = x_t_dict[t_curr]
-    #         x_t_next = x_t_dict[t_next]
-    #         t_vec = torch.full((x_t_current.shape[0],), t_curr, dtype=x_t_current.dtype, device=x_t_current.device)
-    #         # 获取对应的 sigma_t 和 sigma_{t+1}
-    #         sigma_t = t_curr
-    #         sigma_t_next = t_next
+    # 第二阶段：速度补偿
+    print("Stage II: Velocity Compensation")
+    with pipeline.progress_bar(total=len(timesteps)-1) as progress_bar:
+        for idx in range(len(timesteps)-1):
+            t_curr = timesteps[idx]
+            t_next = timesteps[idx+1]
+            x_t_current = x_t_dict[t_curr]
+            x_t_next = x_t_dict[t_next]
+            t_vec = torch.full((x_t_current.shape[0],), t_curr, dtype=x_t_current.dtype, device=x_t_current.device)
+            # 获取对应的 sigma_t 和 sigma_{t+1}
+            sigma_t = t_curr
+            sigma_t_next = t_next
 
-    #         # 计算速度 v_theta(x_t, t)
-    #         joint_attention_kwargs['t'] = t_curr
-    #         joint_attention_kwargs['inverse'] = True
-    #         joint_attention_kwargs['second_order'] = False
-    #         joint_attention_kwargs['inject'] = inject_list[idx]
+            # 计算速度 v_theta(x_t, t)
+            joint_attention_kwargs['t'] = t_curr
+            joint_attention_kwargs['inverse'] = True
+            joint_attention_kwargs['second_order'] = False
+            joint_attention_kwargs['inject'] = inject_list[idx]
 
-    #         pred, joint_attention_kwargs = pipeline.transformer(
-    #             hidden_states=x_t_current,
-    #             timestep=t_vec,
-    #             guidance=guidance_vec,
-    #             pooled_projections=pooled_prompt_embeds,
-    #             encoder_hidden_states=prompt_embeds,
-    #             txt_ids=text_ids,
-    #             img_ids=latent_image_ids,
-    #             joint_attention_kwargs=joint_attention_kwargs,
-    #             return_dict=pipeline,
-    #         )
-    #         pred = pred[0]
+            pred, joint_attention_kwargs = pipeline.transformer(
+                hidden_states=x_t_current,
+                timestep=t_vec,
+                guidance=guidance_vec,
+                pooled_projections=pooled_prompt_embeds,
+                encoder_hidden_states=prompt_embeds,
+                txt_ids=text_ids,
+                img_ids=latent_image_ids,
+                joint_attention_kwargs=joint_attention_kwargs,
+                return_dict=pipeline,
+            )
+            pred = pred[0]
 
-    #         # 计算 \hat{x}_{t+1}
-    #         x_hat_t_plus_1 = x_t_current + (sigma_t_next - sigma_t) * pred
+            # 计算 \hat{x}_{t+1}
+            x_hat_t_plus_1 = x_t_current + (sigma_t_next - sigma_t) * pred
 
-    #         # 计算 ε_t
-    #         epsilon_t = x_t_next - x_hat_t_plus_1
+            # 计算 ε_t
+            epsilon_t = x_t_next - x_hat_t_plus_1
 
-    #         # 存储 ε_t
-    #         epsilon_t_dict[t_next] = epsilon_t
+            # 存储 ε_t
+            epsilon_t_dict[t_next] = epsilon_t
 
-    #         progress_bar.update()
+            progress_bar.update()
             
      
     
