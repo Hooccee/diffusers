@@ -11,6 +11,8 @@ from torch import Tensor
 from torchvision import transforms
 import logging
 
+#os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+
 logger = logging.getLogger(__name__)   # pylint: disable=invalid-name
 
 # 使用推理模式装饰器，禁用梯度计算以提高推理速度和节省内存
@@ -108,7 +110,7 @@ from diffusers.models.transformers.transformer_flux import FluxTransformerBlock
 import numpy as np
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
 from diffusers.utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
-
+from diffusers.models.transformers.transformer_flux import RfSolverFluxTransformer2DModel
 
 
 #--------------------继承并重写 diffusers.FluxPipeline 类-------------------------------------------------
@@ -124,7 +126,58 @@ from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5Tokeniz
 
 
 
+def find_common_subsequences(target_tokens, source_tokens):
+    def truncate_at_eos(tokens):
+        if '</s>' in tokens:
+            return tokens[:tokens.index('</s>')]
+        return tokens
 
+    # 只取 `'</s>'` 前面的部分
+    target_tokens = truncate_at_eos(target_tokens)
+    source_tokens = truncate_at_eos(source_tokens)
+
+    # 将 tokens 转换为小写
+    target_tokens = [token.lower() for token in target_tokens]
+    source_tokens = [token.lower() for token in source_tokens]
+
+    common_subsequences = []
+    target_len = len(target_tokens)
+    source_len = len(source_tokens)
+
+    for i in range(target_len):
+        for j in range(source_len):
+            if target_tokens[i] == source_tokens[j]:
+                start_i, start_j = i, j
+                while i < target_len and j < source_len and target_tokens[i] == source_tokens[j]:
+                    if target_tokens[i] in ['<pad>'] or source_tokens[j] in ['<pad>']:
+                        break
+                    i += 1
+                    j += 1
+                common_subsequences.append((start_i, i, start_j, j))
+                i = start_i  # 重置 i，继续搜索其他子序列
+                break  # 移动到 target_tokens 中的下一个 token
+
+    # 移除 start_j, j 区间重叠的子序列，保留较大的区间
+    # 按照 start_j 排序，若相同则按区间长度降序排序
+    common_subsequences.sort(key=lambda x: (x[2], -(x[3] - x[2])))
+
+    filtered_subsequences = []
+    last_start_j, last_end_j = -1, -1
+    for subseq in common_subsequences:
+        start_j, end_j = subseq[2], subseq[3]
+        if start_j >= last_end_j:
+            # 与之前的区间不重叠，直接添加
+            filtered_subsequences.append(subseq)
+            last_start_j, last_end_j = start_j, end_j
+        else:
+            # 重叠，保留较大的区间
+            current_len = last_end_j - last_start_j
+            new_len = end_j - start_j
+            if new_len > current_len:
+                filtered_subsequences[-1] = subseq
+                last_start_j, last_end_j = start_j, end_j
+
+    return filtered_subsequences
 
 
 
@@ -137,11 +190,59 @@ def interpolated_inversion(
     joint_attention_kwargs,
     num_steps=28,
     use_shift_t_sampling=True, 
-    source_prompt="",
+    target_prompt='photo of a tiger',
+    source_prompt='photo of a cat',
     guidance_scale = 1.0,
     epsilon_t_dict= {}
 ):
+#----------------debug---------------------
+#     target_prompt='A red car on a deserted highway near snow mountains under a partly cloudy sky'
+#     source_prompt='A deserted highway near snow mountains under a partly cloudy sky'
+#     # 编码提示文本
+#     target_prompt_embeds, pooled_target_prompt_embeds,text_ids = pipeline.encode_prompt(
+#         prompt=target_prompt, 
+#         prompt_2=target_prompt
+#     )
+#     source_prompt_embeds, pooled_source_prompt_embeds,text_ids = pipeline.encode_prompt(
+#         prompt=source_prompt, 
+#         prompt_2=source_prompt
+#     )
 
+#     # 获取 text_ids
+#     target_text_inputs = pipeline.tokenizer_2(
+#         target_prompt,
+#         padding="max_length",
+#         max_length=512,
+#         truncation=True,
+#         return_tensors="pt",
+#     )
+#     target_text_ids = target_text_inputs.input_ids
+
+#     source_text_inputs = pipeline.tokenizer_2(
+#         source_prompt,
+#         padding="max_length",
+#         max_length=512,
+#         truncation=True,
+#         return_tensors="pt",
+#     )
+#     source_text_ids = source_text_inputs.input_ids
+
+#     # 将 target_prompt 与 source_prompt 转换为 token 列表
+#     target_tokens = pipeline.tokenizer_2.convert_ids_to_tokens(target_text_ids[0])
+#     source_tokens = pipeline.tokenizer_2.convert_ids_to_tokens(source_text_ids[0])
+
+#     # 找到所有公共子序列
+#     common_subsequences = find_common_subsequences(target_tokens, source_tokens)
+
+#     # 使用 target_prompt_embeds，并替换不变部分的 token
+
+#     prompt_embeds = target_prompt_embeds.clone()
+# # 将 target_prompt 与 source_prompt 不变部分的 token 替换为 source_prompt_embeds 中的内容
+#     for start_i, end_i, start_j, end_j in common_subsequences:
+#         prompt_embeds[:, start_i:end_i, :] = source_prompt_embeds[:, start_j:end_j, :]
+
+
+#----------------debug---------------------
 
     # 源文本提示
     prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
@@ -249,51 +350,51 @@ def interpolated_inversion(
             packed_latents = packed_latents.to(DTYPE)
             progress_bar.update()
 
-    # # 速度补偿前反转timesteps
-    # timesteps = timesteps[::-1]
+    # 速度补偿前反转timesteps
+    timesteps = timesteps[::-1]
 
-    # # 第二阶段：速度补偿
-    # print("Stage II: Velocity Compensation")
-    # with pipeline.progress_bar(total=len(timesteps)-1) as progress_bar:
-    #     for idx in range(len(timesteps)-1):
-    #         t_curr = timesteps[idx]
-    #         t_next = timesteps[idx+1]
-    #         x_t_current = x_t_dict[t_curr]
-    #         x_t_next = x_t_dict[t_next]
-    #         t_vec = torch.full((x_t_current.shape[0],), t_curr, dtype=x_t_current.dtype, device=x_t_current.device)
-    #         # 获取对应的 sigma_t 和 sigma_{t+1}
-    #         sigma_t = t_curr
-    #         sigma_t_next = t_next
+    # 第二阶段：速度补偿
+    print("Stage II: Velocity Compensation")
+    with pipeline.progress_bar(total=len(timesteps)-1) as progress_bar:
+        for idx in range(len(timesteps)-1):
+            t_curr = timesteps[idx]
+            t_next = timesteps[idx+1]
+            x_t_current = x_t_dict[t_curr]
+            x_t_next = x_t_dict[t_next]
+            t_vec = torch.full((x_t_current.shape[0],), t_curr, dtype=x_t_current.dtype, device=x_t_current.device)
+            # 获取对应的 sigma_t 和 sigma_{t+1}
+            sigma_t = t_curr
+            sigma_t_next = t_next
 
-    #         # 计算速度 v_theta(x_t, t)
-    #         joint_attention_kwargs['t'] = t_curr
-    #         joint_attention_kwargs['inverse'] = True
-    #         joint_attention_kwargs['second_order'] = False
-    #         joint_attention_kwargs['inject'] = inject_list[idx]
+            # 计算速度 v_theta(x_t, t)
+            joint_attention_kwargs['t'] = t_curr
+            joint_attention_kwargs['inverse'] = True
+            joint_attention_kwargs['second_order'] = False
+            joint_attention_kwargs['inject'] = inject_list[idx]
 
-    #         pred, joint_attention_kwargs = pipeline.transformer(
-    #             hidden_states=x_t_current,
-    #             timestep=t_vec,
-    #             guidance=guidance_vec,
-    #             pooled_projections=pooled_prompt_embeds,
-    #             encoder_hidden_states=prompt_embeds,
-    #             txt_ids=text_ids,
-    #             img_ids=latent_image_ids,
-    #             joint_attention_kwargs=joint_attention_kwargs,
-    #             return_dict=pipeline,
-    #         )
-    #         pred = pred[0]
+            pred, joint_attention_kwargs = pipeline.transformer(
+                hidden_states=x_t_current,
+                timestep=t_vec,
+                guidance=guidance_vec,
+                pooled_projections=pooled_prompt_embeds,
+                encoder_hidden_states=prompt_embeds,
+                txt_ids=text_ids,
+                img_ids=latent_image_ids,
+                joint_attention_kwargs=joint_attention_kwargs,
+                return_dict=pipeline,
+            )
+            pred = pred[0]
 
-    #         # 计算 \hat{x}_{t+1}
-    #         x_hat_t_plus_1 = x_t_current + (sigma_t_next - sigma_t) * pred
+            # 计算 \hat{x}_{t+1}
+            x_hat_t_plus_1 = x_t_current + (sigma_t_next - sigma_t) * pred
 
-    #         # 计算 ε_t
-    #         epsilon_t = x_t_next - x_hat_t_plus_1
+            # 计算 ε_t
+            epsilon_t = x_t_next - x_hat_t_plus_1
 
-    #         # 存储 ε_t
-    #         epsilon_t_dict[t_next] = epsilon_t
+            # 存储 ε_t
+            epsilon_t_dict[t_next] = epsilon_t
 
-    #         progress_bar.update()
+            progress_bar.update()
             
      
     
@@ -317,18 +418,55 @@ def interpolated_denoise(
     use_inversed_latents=True,
     guidance_scale=4.0,
     target_prompt='photo of a tiger',
+    source_prompt='photo of a cat',
     DTYPE=torch.bfloat16,
     num_steps=28,
     use_shift_t_sampling=True, 
-    epsilon_t_dict=None
+    epsilon_t_dict=None,
+    num_interpolated_steps=6
 ):
 
 
     # 编码提示文本
-    prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
+
+    source_prompt_embeds, pooled_source_prompt_embeds,text_ids1 = pipeline.encode_prompt(
+        prompt=source_prompt, 
+        prompt_2=source_prompt
+    )
+    target_prompt_embeds, pooled_target_prompt_embeds,text_ids = pipeline.encode_prompt(
         prompt=target_prompt, 
         prompt_2=target_prompt
     )
+
+    # 获取 text_ids
+    target_text_inputs = pipeline.tokenizer_2(
+        target_prompt,
+        padding="max_length",
+        max_length=512,
+        truncation=True,
+        return_tensors="pt",
+    )
+    target_text_ids = target_text_inputs.input_ids
+
+    source_text_inputs = pipeline.tokenizer_2(
+        source_prompt,
+        padding="max_length",
+        max_length=512,
+        truncation=True,
+        return_tensors="pt",
+    )
+    source_text_ids = source_text_inputs.input_ids
+
+    # 将 target_prompt 与 source_prompt 转换为 token 列表
+    target_tokens = pipeline.tokenizer_2.convert_ids_to_tokens(target_text_ids[0])
+    source_tokens = pipeline.tokenizer_2.convert_ids_to_tokens(source_text_ids[0])
+
+    # 找到所有公共子序列
+    common_subsequences = find_common_subsequences(target_tokens, source_tokens)
+
+
+
+        
 
     # 准备潜变量图像ID
     latent_image_ids = pipeline._prepare_latent_image_ids(
@@ -359,7 +497,6 @@ def interpolated_denoise(
             width=tmp_latents.shape[3],
         )
 
-
     # 获取时间步长调度表
     timesteps = get_schedule( 
                 num_steps=num_steps,
@@ -367,10 +504,8 @@ def interpolated_denoise(
                 shift=use_shift_t_sampling,
             )
     
-
     guidance_vec = torch.full((packed_latents.shape[0],), guidance_scale, device=packed_latents.device, dtype=packed_latents.dtype)
     inject_list = [True] * joint_attention_kwargs['inject_step'] + [False] * (len(timesteps[:-1]) - joint_attention_kwargs['inject_step'])
-
 
     # 进行去噪
     print("Denoising")
@@ -383,16 +518,28 @@ def interpolated_denoise(
             joint_attention_kwargs['second_order'] = False
             joint_attention_kwargs['inject'] = inject_list[i]
 
+            # 在前几个去噪步骤中使用 source_prompt_embeds
+            if i < num_interpolated_steps:
+                # 使用 target_prompt_embeds，并替换不变部分的 token
+
+                prompt_embeds = target_prompt_embeds.clone()
+                # 将 target_prompt 与 source_prompt 不变部分的 token 替换为 source_prompt_embeds 中的内容
+                for start_i, end_i, start_j, end_j in common_subsequences:
+                    prompt_embeds[:, start_i:end_i, :] = source_prompt_embeds[:, start_j:end_j, :]
+                    print("start_i, end_i, start_j, end_j", start_i, end_i, start_j, end_j)
+            else:
+                prompt_embeds = target_prompt_embeds
+
             # 计算速度
             pred,joint_attention_kwargs = pipeline.transformer(
                     hidden_states=packed_latents,
                     timestep=t_vec,
                     guidance=guidance_vec,
-                    pooled_projections=pooled_prompt_embeds,
+                    pooled_projections=pooled_target_prompt_embeds,
                     encoder_hidden_states=prompt_embeds,
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
-                    joint_attention_kwargs=joint_attention_kwargs,  #TODO:此处可以传递inject的相关参数，详细仍需再研究，考虑形如 joint_attention_kwargs['inject'] = inject_list[i]  24/11/19 修改到此
+                    joint_attention_kwargs=joint_attention_kwargs,
                     return_dict=pipeline,
                 )
             pred=pred[0]
@@ -406,7 +553,7 @@ def interpolated_denoise(
             epsilon_t=epsilon_t.to(torch.float32)
 
             # 更新潜变量
-            packed_latents = packed_latents + (t_prev - t_curr) * pred #+ epsilon_t
+            packed_latents = packed_latents + (t_prev - t_curr) * pred + epsilon_t
 
             packed_latents = packed_latents.to(DTYPE)
             progress_bar.update()
@@ -504,7 +651,7 @@ def main():
             num_steps=args.num_steps, 
             use_shift_t_sampling=True,
             source_prompt=args.source_prompt,
-            guidance_scale = args.guidance_scale,
+            guidance_scale = 2,
             joint_attention_kwargs=joint_attention_kwargs,
             epsilon_t_dict=epsilon_t_dict)    
     else:
@@ -518,6 +665,7 @@ def main():
         joint_attention_kwargs=joint_attention_kwargs,
         guidance_scale=args.guidance_scale,
         target_prompt=args.target_prompt,
+        source_prompt=args.source_prompt,
         DTYPE=DTYPE,
         num_steps=args.num_steps,
         use_shift_t_sampling=True,
