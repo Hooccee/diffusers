@@ -618,7 +618,7 @@ def interpolated_inversion(
         prompt=source_prompt, 
         prompt_2=source_prompt
     )
-    #print("latents", latents.shape)
+    print("latents", latents.shape)
     # 准备潜变量图像ID
     latent_image_ids = pipeline._prepare_latent_image_ids(
         latents.shape[0],
@@ -717,8 +717,8 @@ def interpolated_inversion(
     # 解包潜变量
     latents = pipeline._unpack_latents(
             packed_latents,
-            height=1024,
-            width=1024,
+            height=512,
+            width=512,
             vae_scale_factor=pipeline.vae_scale_factor,
     )
     latents = latents.to(DTYPE)
@@ -850,8 +850,8 @@ def interpolated_denoise(
     # 解包潜变量
     latents = pipeline._unpack_latents(
             packed_latents,
-            height=1024,
-            width=1024,
+            height=512,
+            width=512,
             vae_scale_factor=pipeline.vae_scale_factor,
     )
     latents = latents.to(DTYPE)
@@ -900,8 +900,8 @@ def main():
     # 改为"_class_name": "CustomFluxPipeline" 
     # "FluxTransformer2DModel" 改为 "CustomFluxTransformer2DModel"
     pipe = RfSolverFluxPipeline.from_pretrained(args.model_path, torch_dtype=DTYPE)
-    pipe.enable_sequential_cpu_offload()
-    #pipe.enable_model_cpu_offload()
+    pipe.enable_model_cpu_offload()
+    #pipe.enable_sequential_cpu_offload()
 
     # 如果不存在则创建输出目录
     os.makedirs(args.output_dir, exist_ok=True)
@@ -918,8 +918,8 @@ def main():
 
     train_transforms = transforms.Compose(
                 [
-                    transforms.Resize(1024, interpolation=transforms.InterpolationMode.BILINEAR),
-                    transforms.CenterCrop(1024),
+                    transforms.Resize(512, interpolation=transforms.InterpolationMode.BILINEAR),
+                    transforms.CenterCrop(512),
                     transforms.ToTensor(),
                     transforms.Normalize([0.5], [0.5]),
                 ]
@@ -976,6 +976,7 @@ def main():
     print(f"已保存输出图像到 {output_path}，参数为:num_steps={args.num_steps} inject={args.inject} inversed={args.use_inversed_latents} guidance_scale={args.guidance_scale}")
 
     # 显式删除不再需要的变量
+    pipe.maybe_free_model_hooks()
     del out, img_latent, img_latents, inversed_latent, pipe, img, joint_attention_kwargs
 
     # 强制进行垃圾收集

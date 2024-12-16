@@ -5,7 +5,7 @@ import argparse
 
 os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
 os.environ['MKL_THREADING_LAYER'] = 'Intel'
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+os.environ["CUDA_VISIBLE_DEVICES"] = '1'
 
 # 定义批量编辑图片的函数
 def batch_flux_editing(excel_path, output_dir, feature_path, script_path):
@@ -93,9 +93,9 @@ def batch_flux_editing(excel_path, output_dir, feature_path, script_path):
 if __name__ == "__main__":
     # 设置参数
     excel_path = "/data/chx/EditEval_v1/Dataset/editing_prompts_collection.xlsx"
-    output_dir = "/data/chx/EditEval_v1/output_EditFT_edit_g1_1_woe_s6"
+    output_dir = "/data/chx/EditEval_v1/output_EditFT_edit_g1_1_s6"
     feature_path = "feature_output"  # 可根据需要修改
-    script_path = "/home/chx/mySrc/diffusers/EditFT_edit.py"  # 编辑脚本的路径
+    script_path = "/home/chx/mySrc/diffusers/EditFT_edit_we.py"  # 编辑脚本的路径
 
     # 执行批量处理
     batch_flux_editing(excel_path, output_dir, feature_path, script_path)
