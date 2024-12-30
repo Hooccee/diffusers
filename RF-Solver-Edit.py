@@ -654,6 +654,9 @@ def interpolated_inversion(
     #反演过程反转调度表和inject_list
     timesteps = timesteps[::-1]
     inject_list = inject_list[::-1]
+
+    #pipeline.to('cpu')
+
     # 使用插值速度场进行图像反演
     with pipeline.progress_bar(total=len(timesteps)-1) as progress_bar:
         for i, (t_curr, t_prev) in enumerate(zip(timesteps[:-1], timesteps[1:])):
@@ -892,6 +895,7 @@ def main():
         raise ValueError(f"不支持的数据类型: {args.dtype}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    #device = "cpu"
 
     #/data/chx/FLUX.1-dev/transformer/config.json 中"_class_name": "FluxTransformer2DModel", 
     # 改为"_class_name": "CustomFluxTransformer2DModel"
