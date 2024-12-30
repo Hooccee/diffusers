@@ -2,15 +2,17 @@ import pandas as pd
 import os
 import subprocess
 import argparse
+import json
 
 os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
 os.environ['MKL_THREADING_LAYER'] = 'Intel'
 os.environ["CUDA_VISIBLE_DEVICES"] = '2'
 
 # 定义批量编辑图片的函数
-def batch_flux_editing(excel_path, output_dir, feature_path, script_path):
-    # 读取Excel文件
-    data = pd.read_excel(excel_path)
+def batch_flux_editing(mapping_file_path, output_dir, feature_path, script_path):
+    # 读取JSON文件
+    with open(mapping_file_path, 'r') as f:
+        data = json.load(f)
     
     # 创建一个字典用于跟踪每种编辑类别的行序号
     class_row_counters = {}
@@ -23,12 +25,29 @@ def batch_flux_editing(excel_path, output_dir, feature_path, script_path):
     else:
         completed_tasks = set()
     
-    # 遍历Excel表中的每一行
-    for index, row in data.iterrows():
+    # 遍历JSON数据中的每一项
+    for index, item in data.items():
         # 提取信息
-        edit_class = row['Edit Class']
-        source_prompt = row['Source Prompt']
-        target_prompt = row['Target Prompt']
+        image_path = os.path.join("/data/chx/PIE-Bench_v1/annotation_images", item['image_path'])
+        source_prompt = item['original_prompt']
+        target_prompt = item['editing_prompt']
+        
+        # 使用 image_path 解析编辑类别
+        path_parts = item['image_path'].split('/')
+        # 去掉最后的文件名
+        parts = path_parts[:-1]  
+
+        # 提取关键词并处理
+        keywords = []
+        # 处理第一部分 (change_attribute_content)
+        first_part = parts[0].split('_')[1:]  # 跳过数字前缀
+        keywords.append('_'.join(first_part[:-1]))  # 去掉最后的数字后缀
+
+        # 处理其他部分
+        for part in parts[1:]:
+            keywords.append(part.split('_')[1])  # 取第二个部分（跳过数字前缀）
+
+        edit_class = '-'.join(keywords)
         
         # 如果是新出现的编辑类别，初始化其计数
         if edit_class not in class_row_counters:
@@ -38,7 +57,6 @@ def batch_flux_editing(excel_path, output_dir, feature_path, script_path):
         
         # 根据编辑类别和类内的行序号生成图片路径
         class_row_number = class_row_counters[edit_class]
-        source_img_path = f"/data/chx/EditEval_v1/Dataset/{edit_class}/{class_row_number}.jpg"
         save_dir = os.path.join(output_dir, f"{edit_class}_output_{class_row_number}")
         
         # 创建唯一标识符用于记录任务状态
@@ -54,7 +72,7 @@ def batch_flux_editing(excel_path, output_dir, feature_path, script_path):
 
         # 设置其他所需参数
         model_path = "/data/chx/FLUX.1-dev"
-        guidance_scale = 2
+        guidance_scale = 1
         num_steps = 30
         inject = 2
         dtype = "bfloat16"
@@ -66,7 +84,7 @@ def batch_flux_editing(excel_path, output_dir, feature_path, script_path):
         command = [
             "python", script_path,
             "--model_path", model_path,
-            "--image_path", source_img_path,
+            "--image_path", image_path,
             "--output_dir", save_dir,
             "--use_inversed_latents",
             "--guidance_scale", str(guidance_scale),
@@ -92,10 +110,10 @@ def batch_flux_editing(excel_path, output_dir, feature_path, script_path):
 
 if __name__ == "__main__":
     # 设置参数
-    excel_path = "/data/chx/EditEval_v1/Dataset/editing_prompts_collection.xlsx"
-    output_dir = "/data/chx/EditEval_v1/output_RF-Solver-Edit-diffusers_g2_i2"
+    mapping_file_path = "/data/lyw/PIE-Benchmark/mapping_file.json"
+    output_dir = "/data/lyw/rf-solver-diffuser/output"
     feature_path = "feature_output"  # 可根据需要修改
-    script_path = "./RF-Solver-Edit.py"  # 编辑脚本的路径
+    script_path = "RF-Solver-Edit.py"  # 编辑脚本的路径
 
     # 执行批量处理
-    batch_flux_editing(excel_path, output_dir, feature_path, script_path)
+    batch_flux_editing(mapping_file_path, output_dir, feature_path, script_path)

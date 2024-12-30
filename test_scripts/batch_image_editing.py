@@ -5,7 +5,7 @@ import argparse
 
 os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
 os.environ['MKL_THREADING_LAYER'] = 'Intel'
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+os.environ["CUDA_VISIBLE_DEVICES"] = '2'
 
 # 定义批量编辑图片的函数
 def batch_flux_editing(excel_path, output_dir, feature_path, script_path):
@@ -54,9 +54,9 @@ def batch_flux_editing(excel_path, output_dir, feature_path, script_path):
 
         # 设置其他所需参数
         model_path = "/data/chx/FLUX.1-dev"
-        guidance_scale = 1
-        num_steps = 60
-        inject = 0
+        guidance_scale = 2
+        num_steps = 30
+        inject = 2
         dtype = "bfloat16"
         #offload = True
 
@@ -73,7 +73,7 @@ def batch_flux_editing(excel_path, output_dir, feature_path, script_path):
             "--num_steps", str(num_steps),
             "--shift",
             "--source_prompt", source_prompt,
-            "--target_prompt", source_prompt,
+            "--target_prompt", target_prompt,
             "--dtype", dtype,
             "--feature_path", feature_path,
             "--inject", str(inject)
@@ -93,9 +93,9 @@ def batch_flux_editing(excel_path, output_dir, feature_path, script_path):
 if __name__ == "__main__":
     # 设置参数
     excel_path = "/data/chx/EditEval_v1/Dataset/editing_prompts_collection.xlsx"
-    output_dir = "/data/chx/EditEval_v1/output_RF-Solver-Edit-diffusers_prompt_reco_i0_g1_1order_step60"  # 可根据需要修改
+    output_dir = "/data/chx/EditEval_v1/output_RF-Solver-Edit-diffusers_g2_i2"
     feature_path = "feature_output"  # 可根据需要修改
-    script_path = "./RF-Solver-Edit_1order.py"  # 编辑脚本的路径
+    script_path = "RF-Solver-Edit.py"  # 编辑脚本的路径
 
     # 执行批量处理
     batch_flux_editing(excel_path, output_dir, feature_path, script_path)
