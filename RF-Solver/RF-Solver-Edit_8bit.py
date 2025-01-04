@@ -6,10 +6,13 @@ import argparse
 import os
 
 from PIL import Image
-from diffusers import FluxPipeline,RfSolverFluxPipeline
+from diffusers import FluxPipeline,RfSolverFluxPipeline, RfSolverFluxTransformer2DModel
 from torch import Tensor
 from torchvision import transforms
 import logging
+
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
+from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 
 os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 
@@ -656,7 +659,8 @@ def interpolated_inversion(
     inject_list = inject_list[::-1]
 
     #pipeline.to('cpu')
-
+    
+    
     # 使用插值速度场进行图像反演
     with pipeline.progress_bar(total=len(timesteps)-1) as progress_bar:
         for i, (t_curr, t_prev) in enumerate(zip(timesteps[:-1], timesteps[1:])):
@@ -714,14 +718,15 @@ def interpolated_inversion(
             
             packed_latents = packed_latents.to(DTYPE)
             progress_bar.update()
-            
+
+    #pipeline.transformer.to('cpu')        
     
     
     # 解包潜变量
     latents = pipeline._unpack_latents(
             packed_latents,
-            height=512,
-            width=512,
+            height=1024,
+            width=1024,
             vae_scale_factor=pipeline.vae_scale_factor,
     )
     latents = latents.to(DTYPE)
@@ -853,8 +858,8 @@ def interpolated_denoise(
     # 解包潜变量
     latents = pipeline._unpack_latents(
             packed_latents,
-            height=512,
-            width=512,
+            height=1024,
+            width=1024,
             vae_scale_factor=pipeline.vae_scale_factor,
     )
     latents = latents.to(DTYPE)
@@ -897,13 +902,17 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     #device = "cpu"
 
-    #/data/chx/FLUX.1-dev/transformer/config.json 中"_class_name": "FluxTransformer2DModel", 
-    # 改为"_class_name": "CustomFluxTransformer2DModel"
 
-    #/data/chx/FLUX.1-dev/model_index.json 中"_class_name": "FluxPipeline" 
-    # 改为"_class_name": "CustomFluxPipeline" 
-    # "FluxTransformer2DModel" 改为 "CustomFluxTransformer2DModel"
-    pipe = RfSolverFluxPipeline.from_pretrained(args.model_path, torch_dtype=DTYPE)
+    quant_config = TransformersBitsAndBytesConfig(load_in_8bit=True,)
+    transformer_8bit = RfSolverFluxTransformer2DModel.from_pretrained(
+        args.model_path,
+        subfolder="transformer",
+        quantization_config=quant_config,
+        torch_dtype=torch.bfloat16,
+    )
+
+    pipe = RfSolverFluxPipeline.from_pretrained(args.model_path, torch_dtype=DTYPE,transformer=transformer_8bit)
+    print(pipe.hf_device_map)
     pipe.enable_model_cpu_offload()
     #pipe.enable_sequential_cpu_offload()
 
@@ -922,8 +931,8 @@ def main():
 
     train_transforms = transforms.Compose(
                 [
-                    transforms.Resize(512, interpolation=transforms.InterpolationMode.BILINEAR),
-                    transforms.CenterCrop(512),
+                    transforms.Resize(1024, interpolation=transforms.InterpolationMode.BILINEAR),
+                    transforms.CenterCrop(1024),
                     transforms.ToTensor(),
                     transforms.Normalize([0.5], [0.5]),
                 ]
