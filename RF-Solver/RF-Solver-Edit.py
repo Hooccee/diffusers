@@ -912,9 +912,10 @@ def main():
     # )
 
     pipe = RfSolverFluxPipeline.from_pretrained(args.model_path, torch_dtype=DTYPE)
+    pipe.to(device)
     print(pipe.hf_device_map)
     #pipe.enable_model_cpu_offload()
-    pipe.enable_sequential_cpu_offload()
+    #pipe.enable_sequential_cpu_offload()
 
     # 如果不存在则创建输出目录
     os.makedirs(args.output_dir, exist_ok=True)
