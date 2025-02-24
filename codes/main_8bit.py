@@ -299,11 +299,17 @@ def main(args):
     metrics = metircs()
 
     # ******** Loading pipeline **********
-    pipe = RfSolverFluxPipeline.from_pretrained(args.model_path, torch_dtype=DTYPE)
-    #pipe.to(device)
+    quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True,)
+    transformer_8bit = RfSolverFluxTransformer2DModel.from_pretrained(
+        args.model_path,
+        subfolder="transformer",
+        quantization_config=quant_config,
+        torch_dtype=torch.bfloat16,
+    )
+    pipe = RfSolverFluxPipeline.from_pretrained(args.model_path, torch_dtype=DTYPE,transformer=transformer_8bit)
     print(pipe.hf_device_map)
-    #pipe.enable_model_cpu_offload()
-    pipe.enable_sequential_cpu_offload()
+    pipe.enable_model_cpu_offload()
+    #pipe.enable_sequential_cpu_offload()
 
     # ******** Input processing **********
     if args.eval_datasets == '':
@@ -333,6 +339,8 @@ def main(args):
     mean_clip_score = 0
     count = 0
     for img, source_prompt, target_prompt in dataloader:
+        print(source_prompt)
+        print(target_prompt)
         img = img.to(device).to(DTYPE)
         # vae encode
         img_latent = encode_imgs(img, pipe, DTYPE)
